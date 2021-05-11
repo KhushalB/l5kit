@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, DefaultDict, Dict, List, NamedTuple, Set
+from typing import Any, DefaultDict, Dict, List, NamedTuple, no_type_check, Set
 
 import bokeh.io
 import bokeh.plotting
@@ -8,10 +8,11 @@ from bokeh.layouts import column, LayoutDOM
 from bokeh.models import CustomJS, HoverTool, Slider
 from bokeh.plotting import ColumnDataSource
 
-from l5kit.visualization.visualizer.common import (AgentVisualization, CWVisualization, EgoVisualization,
-                                                   FrameVisualization, LaneVisualization, TrajectoryVisualization)
+from l5kit.visualization.visualizer.common import (AgentVisualization, EgoVisualization, FrameVisualization,
+                                                   MapElementVisualization, TrajectoryVisualization)
 
 
+@no_type_check
 def _visualization_list_to_dict(visualisation_list: List[NamedTuple], null_el: NamedTuple) -> Dict[str, Any]:
     """Convert a list of NamedTuple into a dict, where:
     - the NamedTuple fields are the dict keys;
@@ -55,19 +56,22 @@ def visualize(scene_index: int, frames: List[FrameVisualization]) -> LayoutDOM:
 
     for frame_idx, frame in enumerate(frames):
         # we need to ensure we have something otherwise js crashes
-        ego_dict = _visualization_list_to_dict([frame.ego], EgoVisualization(xs=np.empty(0), ys=np.empty(0),
+        ego_dict = _visualization_list_to_dict(frame.ego, EgoVisualization(xs=np.empty(0), ys=np.empty(0),
                                                                              color="black", center_x=0,
-                                                                             center_y=0))
+                                                                             center_y=0, alpha=0.))
 
         agents_dict = _visualization_list_to_dict(frame.agents, AgentVisualization(xs=np.empty(0), ys=np.empty(0),
                                                                                    color="black", track_id=-2,
-                                                                                   agent_type="", prob=0.))
+                                                                                   agent_type="", prob=0.,
+                                                                                   alpha=0.))
 
-        lanes_dict = _visualization_list_to_dict(frame.lanes, LaneVisualization(xs=np.empty(0), ys=np.empty(0),
-                                                                                color="black"))
+        patches_dict = _visualization_list_to_dict(frame.map_patches,
+                                                   MapElementVisualization(xs=np.empty(0), ys=np.empty(0),
+                                                                           color="black", alpha=0.))
 
-        crosswalk_dict = _visualization_list_to_dict(frame.crosswalks, CWVisualization(xs=np.empty(0), ys=np.empty(0),
-                                                                                       color="black"))
+        lines_dict = _visualization_list_to_dict(frame.map_lines,
+                                                 MapElementVisualization(xs=np.empty(0), ys=np.empty(0),
+                                                                         color="black", alpha=0.))
 
         # for trajectory we extract the labels so that we can show them in the legend
         trajectory_dict: Dict[str, Dict[str, Any]] = {}
@@ -81,17 +85,19 @@ def visualize(scene_index: int, frames: List[FrameVisualization]) -> LayoutDOM:
                                                                                                     track_id=-2))
 
         frame_dict = dict(ego=ColumnDataSource(ego_dict), agents=ColumnDataSource(agents_dict),
-                          lanes=ColumnDataSource(lanes_dict),
-                          crosswalks=ColumnDataSource(crosswalk_dict))
+                          map_patches=ColumnDataSource(patches_dict), map_lines=ColumnDataSource(lines_dict))
         frame_dict.update({k: ColumnDataSource(v) for k, v in trajectory_dict.items()})
 
         out.append(frame_dict)
 
+    center_x = out[0]["ego"].data["center_x"][0]
+    center_y = out[0]["ego"].data["center_y"][0]
+
     f = bokeh.plotting.figure(
         title="Scene {}".format(scene_index),
         match_aspect=True,
-        x_range=(out[0]["ego"].data["center_x"][0] - 50, out[0]["ego"].data["center_x"][0] + 50),
-        y_range=(out[0]["ego"].data["center_y"][0] - 50, out[0]["ego"].data["center_y"][0] + 50),
+        x_range=(center_x - 50, center_x + 50),
+        y_range=(center_y - 50, center_y + 50),
         tools=["pan", "wheel_zoom", agent_hover, "save", "reset"],
         active_scroll="wheel_zoom",
     )
@@ -99,14 +105,15 @@ def visualize(scene_index: int, frames: List[FrameVisualization]) -> LayoutDOM:
     f.xgrid.grid_line_color = None
     f.ygrid.grid_line_color = None
 
-    f.patches(line_width=0, alpha=0.5, color="color", source=out[0]["lanes"])
-    f.patches(line_width=0, alpha=0.5, color="#B5B50D", source=out[0]["crosswalks"])
-    f.patches(line_width=2, color="#B53331", source=out[0]["ego"])
-    f.patches(line_width=2, color="color", name="agents", source=out[0]["agents"])
+    f.patches(line_width=1, alpha="alpha", color="color", source=out[0]["map_patches"])
+    f.multi_line(line_width=1, alpha="alpha", source=out[0]["map_lines"], color="color")
+    f.patches(line_width=2, alpha="alpha", color="color", source=out[0]["ego"])
+    f.patches(line_width=2, alpha="alpha", color="color", name="agents", source=out[0]["agents"])
 
     js_string = """
-            sources["lanes"].data = frames[cb_obj.value]["lanes"].data;
-            sources["crosswalks"].data = frames[cb_obj.value]["crosswalks"].data;
+            sources["map_patches"].data = frames[cb_obj.value]["map_patches"].data;
+            sources["map_lines"].data = frames[cb_obj.value]["map_lines"].data;
+
             sources["agents"].data = frames[cb_obj.value]["agents"].data;
             sources["ego"].data = frames[cb_obj.value]["ego"].data;
 
@@ -116,8 +123,8 @@ def visualize(scene_index: int, frames: List[FrameVisualization]) -> LayoutDOM:
             figure.x_range.setv({"start": center_x-50, "end": center_x+50})
             figure.y_range.setv({"start": center_y-50, "end": center_y+50})
 
-            sources["lanes"].change.emit();
-            sources["crosswalks"].change.emit();
+            sources["map_patches"].change.emit();
+            sources["map_lines"].change.emit();
             sources["agents"].change.emit();
             sources["ego"].change.emit();
         """

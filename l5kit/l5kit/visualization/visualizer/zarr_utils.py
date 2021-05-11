@@ -12,8 +12,8 @@ from l5kit.rasterization.box_rasterizer import get_box_world_coords, get_ego_as_
 from l5kit.rasterization.semantic_rasterizer import indices_in_bounds
 from l5kit.sampling import get_relative_poses
 from l5kit.simulation.unroll import SimulationOutput, UnrollInputOutput
-from l5kit.visualization.visualizer.common import (AgentVisualization, CWVisualization, EgoVisualization,
-                                                   FrameVisualization, LaneVisualization, TrajectoryVisualization)
+from l5kit.visualization.visualizer.common import (AgentVisualization, EgoVisualization, FrameVisualization,
+                                                   MapElementVisualization, TrajectoryVisualization)
 
 
 # TODO: this should not be here (maybe a config?)
@@ -80,10 +80,14 @@ def _get_frame_data(mapAPI: MapAPI, frame: np.ndarray, agents_frame: np.ndarray,
     ego_xy = frame["ego_translation"][:2]
 
     #################
-    # plot lanes
+    # plot map patches
+    map_patches_vis: List[MapElementVisualization] = []
+    # this will have priority in visualisation
+    map_patches_vis_lane_prio: List[MapElementVisualization] = []
+    map_lines_vis: List[MapElementVisualization] = []
+
     lane_indices = indices_in_bounds(ego_xy, mapAPI.bounds_info["lanes"]["bounds"], 50)
     active_tl_ids = set(filter_tl_faces_by_status(tls_frame, "ACTIVE")["face_id"].tolist())
-    lanes_vis: List[LaneVisualization] = []
 
     for idx, lane_idx in enumerate(lane_indices):
         lane_idx = mapAPI.bounds_info["lanes"]["ids"][lane_idx]
@@ -97,20 +101,36 @@ def _get_frame_data(mapAPI: MapAPI, frame: np.ndarray, agents_frame: np.ndarray,
         left_lane = lane_coords["xyz_left"][:, :2]
         right_lane = lane_coords["xyz_right"][::-1, :2]
 
-        lanes_vis.append(LaneVisualization(xs=np.hstack((left_lane[:, 0], right_lane[:, 0])),
-                                           ys=np.hstack((left_lane[:, 1], right_lane[:, 1])),
-                                           color=lane_colour))
+        if lane_colour == "gray":
+            map_patches_vis.append(MapElementVisualization(xs=np.hstack((left_lane[:, 0], right_lane[:, 0])),
+                                                           ys=np.hstack((left_lane[:, 1], right_lane[:, 1])),
+                                                           color=lane_colour, alpha=1.0))
+        else:
+            map_patches_vis_lane_prio.append(MapElementVisualization(xs=np.hstack((left_lane[:, 0], right_lane[:, 0])),
+                                                                     ys=np.hstack((left_lane[:, 1], right_lane[:, 1])),
+                                                                     color=lane_colour, alpha=1.0))
+
+        # add bounds
+        to_drop = mapAPI.is_lane_to_drop(lane_idx) or mapAPI.is_lane_in_junction(lane_idx)
+        if not to_drop:
+            map_lines_vis.append(MapElementVisualization(xs=left_lane[:, 0],
+                                                         ys=left_lane[:, 1],
+                                                         color="white", alpha=1.0))
+            map_lines_vis.append(MapElementVisualization(xs=right_lane[:, 0],
+                                                         ys=right_lane[:, 1],
+                                                         color="white", alpha=1.0))
 
     #################
     # plot crosswalks
     crosswalk_indices = indices_in_bounds(ego_xy, mapAPI.bounds_info["crosswalks"]["bounds"], 50)
-    crosswalks_vis: List[CWVisualization] = []
-
     for idx in crosswalk_indices:
         crosswalk = mapAPI.get_crosswalk_coords(mapAPI.bounds_info["crosswalks"]["ids"][idx])
-        crosswalks_vis.append(CWVisualization(xs=crosswalk["xyz"][:, 0],
-                                              ys=crosswalk["xyz"][:, 1],
-                                              color="yellow"))
+        map_patches_vis.append(MapElementVisualization(xs=crosswalk["xyz"][:, 0],
+                                                       ys=crosswalk["xyz"][:, 1],
+                                                       color="rosybrown", alpha=1.0))
+    # add lanes with TLS
+    map_patches_vis.extend(map_patches_vis_lane_prio)
+
     #################
     # plot ego and agents
     agents_frame = np.insert(agents_frame, 0, get_ego_as_agent(frame))
@@ -118,7 +138,7 @@ def _get_frame_data(mapAPI: MapAPI, frame: np.ndarray, agents_frame: np.ndarray,
 
     # ego
     ego_vis = EgoVisualization(xs=box_world_coords[0, :, 0], ys=box_world_coords[0, :, 1],
-                               color="red", center_x=agents_frame["centroid"][0, 0],
+                               color="#B53331", alpha=1.0, center_x=agents_frame["centroid"][0, 0],
                                center_y=agents_frame["centroid"][0, 1])
 
     # agents
@@ -132,12 +152,13 @@ def _get_frame_data(mapAPI: MapAPI, frame: np.ndarray, agents_frame: np.ndarray,
         agents_vis.append(AgentVisualization(xs=box_coord[..., 0],
                                              ys=box_coord[..., 1],
                                              color="#1F77B4" if agent_type not in COLORS else COLORS[agent_type],
+                                             alpha=1.0,
                                              track_id=agent["track_id"],
                                              agent_type=PERCEPTION_LABELS[label_index],
                                              prob=agent["label_probabilities"][label_index]))
 
-    return FrameVisualization(ego=ego_vis, agents=agents_vis, lanes=lanes_vis,
-                              crosswalks=crosswalks_vis, trajectories=[])
+    return FrameVisualization(ego=[ego_vis], agents=agents_vis, map_patches=map_patches_vis,
+                              map_lines=map_lines_vis, trajectories=[])
 
 
 def zarr_to_visualizer_scene(scene_dataset: ChunkedDataset, mapAPI: MapAPI,
@@ -170,7 +191,8 @@ def zarr_to_visualizer_scene(scene_dataset: ChunkedDataset, mapAPI: MapAPI,
         if with_trajectories:
             traj_vis = _get_frame_trajectories(frames, agents_frames, agents_frame["track_id"], frame_idx)
             frame_vis = FrameVisualization(ego=frame_vis.ego, agents=frame_vis.agents,
-                                           lanes=frame_vis.lanes, crosswalks=frame_vis.crosswalks,
+                                           map_patches=frame_vis.map_patches,
+                                           map_lines=frame_vis.map_lines,
                                            trajectories=traj_vis)
         frames_vis.append(frame_vis)
 
@@ -243,7 +265,7 @@ def simulation_out_to_visualizer_scene(sim_out: SimulationOutput, mapAPI: MapAPI
                                                             track_id=track_id))
 
         frame_vis = FrameVisualization(ego=frame_vis.ego, agents=frame_vis.agents,
-                                       lanes=frame_vis.lanes, crosswalks=frame_vis.crosswalks,
+                                       map_patches=frame_vis.map_patches, map_lines=frame_vis.map_lines,
                                        trajectories=trajectories)
 
         frames_vis.append(frame_vis)
