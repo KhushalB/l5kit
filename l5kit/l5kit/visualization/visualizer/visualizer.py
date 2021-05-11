@@ -131,7 +131,7 @@ def visualize(scene_index: int, frames: List[FrameVisualization]) -> LayoutDOM:
 
     for trajectory_name in trajectories_labels:
         f.multi_line(alpha=0.8, line_width=3, source=out[0][trajectory_name], color="color",
-                     legend_label=trajectory_name)
+                     legend_label=trajectory_name, line_dash="dotted")
         js_string += f'sources["{trajectory_name}"].data = frames[cb_obj.value]["{trajectory_name}"].data;\n' \
                      f'sources["{trajectory_name}"].change.emit();\n'
 
