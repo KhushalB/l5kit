@@ -107,8 +107,8 @@ def visualize(scene_index: int, frames: List[FrameVisualization]) -> LayoutDOM:
 
     f.patches(line_width=1, alpha="alpha", color="color", source=out[0]["map_patches"])
     f.multi_line(line_width=1, alpha="alpha", source=out[0]["map_lines"], color="color")
-    f.patches(line_width=2, alpha="alpha", color="color", source=out[0]["ego"])
-    f.patches(line_width=2, alpha="alpha", color="color", name="agents", source=out[0]["agents"])
+    f.patches(line_width=2, fill_alpha="alpha", color="color", source=out[0]["ego"])
+    f.patches(line_width=2, fill_alpha="alpha", color="color", name="agents", source=out[0]["agents"])
 
     js_string = """
             sources["map_patches"].data = frames[cb_obj.value]["map_patches"].data;
@@ -140,7 +140,7 @@ def visualize(scene_index: int, frames: List[FrameVisualization]) -> LayoutDOM:
         code=js_string,
     )
 
-    slider = Slider(start=0, end=len(frames), value=0, step=1, title="frame")
+    slider = Slider(start=0, end=len(frames) - 1, value=0, step=1, title="frame")
     slider.js_on_change("value", slider_callback)
 
     f.legend.location = "top_left"
