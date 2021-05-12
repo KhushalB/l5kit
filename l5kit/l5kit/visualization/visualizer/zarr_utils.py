@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, no_type_check
 
 import numpy as np
 
@@ -69,6 +69,33 @@ def _get_frame_trajectories(frames: np.ndarray, agents_frames: List[np.ndarray],
     return traj_visualisation
 
 
+@no_type_check
+def is_lane_painted(mapAPI: MapAPI, element_id: str) -> bool:
+    """Return True if the lane with the element_id is a real lane (i.e. it's painted on the road).
+    We check both the divider type and the role in the junction for this
+
+    :param mapAPI: mapAPI object
+    :param element_id: the lane element id
+    :return:
+    """
+    element = mapAPI[element_id]
+    if not mapAPI.is_lane(element):
+        raise ValueError(f"{element_id} is not a lane")
+
+    lane = element.element.lane
+    left_bound = lane.left_boundary
+    right_bound = lane.right_boundary
+
+    # check if it's a real line
+    if 1 in left_bound.divider_type or 1 in right_bound.divider_type:  # from L460 road_network.proto
+        return False
+    # remove additional curve sections
+    if lane.turn_type_in_parent_junction in [2, 3, 4, 5, 6]:  # L427 of road_network.proto
+        return False
+
+    return True
+
+
 def _get_frame_data(mapAPI: MapAPI, frame: np.ndarray, agents_frame: np.ndarray,
                     tls_frame: np.ndarray) -> FrameVisualization:
     """Get visualisation objects for the current frame.
@@ -112,9 +139,8 @@ def _get_frame_data(mapAPI: MapAPI, frame: np.ndarray, agents_frame: np.ndarray,
                                                                      ys=np.hstack((left_lane[:, 1], right_lane[:, 1])),
                                                                      color=lane_colour, alpha=1.0))
 
-        # add bounds
-        to_drop = mapAPI.is_lane_to_drop(lane_idx) or mapAPI.is_lane_in_junction(lane_idx)
-        if not to_drop:
+        # add bounds for painted lanes
+        if is_lane_painted(mapAPI, lane_idx):
             map_lines_vis.append(MapElementVisualization(xs=left_lane[:, 0],
                                                          ys=left_lane[:, 1],
                                                          color="white", alpha=1.0))

@@ -135,55 +135,6 @@ class MapAPI:
         """
         return bool(element.element.HasField("lane"))
 
-    @staticmethod
-    @no_type_check
-    def is_junction(element: MapElement) -> bool:
-        """Check whether an element is a valid junction
-
-        Args:
-            element (MapElement): a proto element
-
-        Returns:
-            bool: True if the element is a valid junction
-        """
-        has_tag = bool(element.element.HasField("junction"))
-        if not has_tag:
-            return False
-        junction = element.element.junction
-        return junction.is_non_trivial_intersection
-
-    @no_type_check
-    def is_lane_in_junction(self, element_id: str) -> bool:
-        """Check if a lane is part of a junction
-
-        Args:
-            element_id (str): lane element id
-
-        Returns:
-            bool: if the lane is part of a junction
-        """
-        element = self[element_id]
-        assert self.is_lane(element)
-
-        lane = element.element.lane
-        possible_junction = self[self.id_as_str(lane.parent_segment_or_junction)]
-        return self.is_junction(possible_junction)
-
-    @no_type_check
-    def is_lane_to_drop(self, element_id: str) -> bool:  # TODO refactor this ASAP
-        """
-
-        :param element_id:
-        :return:
-        """
-        element = self[element_id]
-        assert self.is_lane(element)
-
-        lane = element.element.lane
-        if lane.turn_type_in_parent_junction in [2, 3, 4, 5, 6]:  # L427 of road_network.proto
-            return True
-        return False
-
     @lru_cache(maxsize=CACHE_SIZE)
     def get_lane_coords(self, element_id: str) -> dict:
         """
