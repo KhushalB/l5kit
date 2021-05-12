@@ -355,15 +355,14 @@ def simulation_out_to_visualizer_scene(sim_out: SimulationOutput, mapAPI: MapAPI
 
         if not sim_out.sim_cfg.use_ego_gt:
             egoes.extend(frame_vis_sim.ego)
-            map_patches = frame_vis_log.map_patches
-            map_lines = frame_vis_log.map_lines
-            ego_in_out = ego_ins_outs[frame_idx]
-            _, sim_traj = _get_in_out_as_trajectories(ego_in_out)
+            map_patches = frame_vis_sim.map_patches
+            map_lines = frame_vis_sim.map_lines
+            _, sim_traj = _get_in_out_as_trajectories(ego_ins_outs[frame_idx])
             trajectories.append(TrajectoryVisualization(xs=sim_traj[:, 0], ys=sim_traj[:, 1],
                                                         color="#B53331", legend_label="ego_simulated", track_id=-1))
         else:
-            map_patches = frame_vis_sim.map_patches
-            map_lines = frame_vis_sim.map_lines
+            map_patches = frame_vis_log.map_patches
+            map_lines = frame_vis_log.map_lines
         if render_gt:
             for ego in frame_vis_log.ego:
                 egoes.append(EgoVisualization(xs=ego.xs, ys=ego.ys, color=ego.color, alpha=0.,
