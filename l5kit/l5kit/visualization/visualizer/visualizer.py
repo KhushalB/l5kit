@@ -195,8 +195,8 @@ def get_raw_buffers(scene_index: int, frames: List[FrameVisualization],
                                                                                                     track_id=-2))
 
         frame_dict = dict(ego=ColumnDataSource(ego_dict), agents=ColumnDataSource(agents_dict),
-                          patches_dict=ColumnDataSource(patches_dict),
-                          lines_dict=ColumnDataSource(lines_dict))
+                          map_patches=ColumnDataSource(patches_dict),
+                          map_lines=ColumnDataSource(lines_dict))
         frame_dict.update({k: ColumnDataSource(v) for k, v in trajectory_dict.items()})
 
         f = bokeh.plotting.figure(
