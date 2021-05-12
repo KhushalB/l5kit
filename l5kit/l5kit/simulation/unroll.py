@@ -154,6 +154,7 @@ class ClosedLoopSimulator:
             # AGENTS
             if not self.sim_cfg.use_agents_gt:
                 agents_input = sim_dataset.rasterise_agents_frame_batch(frame_index)
+                agents_frame_in_out: Dict[int, List[UnrollInputOutput]] = {}
                 if len(agents_input):  # agents may not be available
                     agents_input_dict = default_collate(list(agents_input.values()))
                     agents_output_dict = self.model_agents(move_to_device(agents_input_dict, self.device))
@@ -168,8 +169,8 @@ class ClosedLoopSimulator:
                     # update input and output buffers
                     agents_frame_in_out = self.get_agents_in_out(agents_input_dict, agents_output_dict,
                                                                  self.keys_to_exclude)
-                    for scene_idx in scene_indices:
-                        agents_ins_outs[scene_idx].append(agents_frame_in_out.get(scene_idx, []))
+                for scene_idx in scene_indices:
+                    agents_ins_outs[scene_idx].append(agents_frame_in_out.get(scene_idx, []))
 
             # EGO
             if not self.sim_cfg.use_ego_gt:
