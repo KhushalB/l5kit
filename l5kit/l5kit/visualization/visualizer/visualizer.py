@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, DefaultDict, Dict, List, NamedTuple, no_type_check, Set
+from typing import Any, DefaultDict, Dict, List, NamedTuple, no_type_check, Set, Tuple
 
 import bokeh.io
 import bokeh.plotting
@@ -148,3 +148,77 @@ def visualize(scene_index: int, frames: List[FrameVisualization]) -> LayoutDOM:
 
     layout = column(f, slider)
     return layout
+
+
+# TODO this function has a lot of repeated stuff
+def get_raw_buffers(scene_index: int, frames: List[FrameVisualization],
+                    resolution: Tuple[int, int] = (1024, 1024)) -> np.ndarray:
+    """Get the raw images instead of the html
+
+    :param scene_index: the scene index
+    :param frames: the frames to visualise
+    :param resolution: the resolution as W,H
+    :return: a stacked numpy array of all the frames
+    """
+
+    frame_images: List[np.ndarray] = []
+    trajectories_labels = np.unique([traj.legend_label for frame in frames for traj in frame.trajectories])
+
+    for frame_idx, frame in enumerate(frames):
+        # we need to ensure we have something otherwise js crashes
+        ego_dict = _visualization_list_to_dict(frame.ego, EgoVisualization(xs=np.empty(0), ys=np.empty(0),
+                                                                           color="black", center_x=0,
+                                                                           center_y=0, alpha=0.))
+
+        agents_dict = _visualization_list_to_dict(frame.agents, AgentVisualization(xs=np.empty(0), ys=np.empty(0),
+                                                                                   color="black", track_id=-2,
+                                                                                   agent_type="", prob=0.,
+                                                                                   alpha=0.))
+
+        patches_dict = _visualization_list_to_dict(frame.map_patches,
+                                                   MapElementVisualization(xs=np.empty(0), ys=np.empty(0),
+                                                                           color="black", alpha=0.))
+
+        lines_dict = _visualization_list_to_dict(frame.map_lines,
+                                                 MapElementVisualization(xs=np.empty(0), ys=np.empty(0),
+                                                                         color="black", alpha=0.))
+
+        # for trajectory we extract the labels so that we can show them in the legend
+        trajectory_dict: Dict[str, Dict[str, Any]] = {}
+        for trajectory_label in trajectories_labels:
+            trajectories = [el for el in frame.trajectories if el.legend_label == trajectory_label]
+            trajectory_dict[trajectory_label] = _visualization_list_to_dict(trajectories,
+                                                                            TrajectoryVisualization(xs=np.empty(0),
+                                                                                                    ys=np.empty(0),
+                                                                                                    color="black",
+                                                                                                    legend_label="none",
+                                                                                                    track_id=-2))
+
+        frame_dict = dict(ego=ColumnDataSource(ego_dict), agents=ColumnDataSource(agents_dict),
+                          patches_dict=ColumnDataSource(patches_dict),
+                          lines_dict=ColumnDataSource(lines_dict))
+        frame_dict.update({k: ColumnDataSource(v) for k, v in trajectory_dict.items()})
+
+        f = bokeh.plotting.figure(
+            title="Scene {}".format(scene_index),
+            match_aspect=True,
+            x_range=(frame_dict["ego"].data["center_x"][0] - 50, frame_dict["ego"].data["center_x"][0] + 50),
+            y_range=(frame_dict["ego"].data["center_y"][0] - 50, frame_dict["ego"].data["center_y"][0] + 50),
+            toolbar_location=None
+        )
+        f.axis.visible = False
+        f.xgrid.grid_line_color = None
+        f.ygrid.grid_line_color = None
+
+        f.patches(line_width=1, alpha="alpha", color="color", source=frame_dict["map_patches"])
+        f.multi_line(line_width=1, alpha="alpha", source=frame_dict["map_lines"], color="color")
+        f.patches(line_width=2, fill_alpha="alpha", color="color", source=frame_dict["ego"])
+        f.patches(line_width=2, fill_alpha="alpha", color="color", name="agents", source=frame_dict["agents"])
+
+        for trajectory_name in trajectories_labels:
+            f.multi_line(alpha=0.8, line_width=3, source=frame_dict[trajectory_name], color="color",
+                         legend_label=trajectory_name, line_dash="dotted")
+
+        img = np.asarray(bokeh.io.export.get_screenshot_as_png(f, height=resolution[0], width=resolution[1]))
+        frame_images.append(img)
+    return np.stack(frame_images)
