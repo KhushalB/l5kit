@@ -18,7 +18,7 @@ from l5kit.visualization.visualizer.common import (AgentVisualization, EgoVisual
 
 # TODO: this should not be here (maybe a config?)
 COLORS = {
-    TLFacesColors.GREEN.name: "#33CC33",
+    TLFacesColors.GREEN.name: "#95e494",
     TLFacesColors.RED.name: "#f9a589",
     TLFacesColors.YELLOW.name: "#FFFF66",
     "LANE_DEFAULT": "#BFBFBF",
@@ -284,7 +284,7 @@ def simulation_out_to_visualizer_scene(sim_out: SimulationOutput, mapAPI: MapAPI
                 track_id = agent_in_out.inputs["track_id"]
                 _, sim_traj = _get_in_out_as_trajectories(agent_in_out)
                 trajectories.append(TrajectoryVisualization(xs=sim_traj[:, 0], ys=sim_traj[:, 1],
-                                                            color="yellow",
+                                                            color=COLORS["AGENT_DEFAULT"],
                                                             legend_label="agent_simulated",
                                                             track_id=track_id))
 
