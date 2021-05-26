@@ -1,4 +1,4 @@
-from typing import List, Tuple, no_type_check
+from typing import List, Tuple, no_type_check, NamedTuple
 
 import numpy as np
 
@@ -30,7 +30,7 @@ COLORS = {
 
 
 def _get_frame_trajectories(frames: np.ndarray, agents_frames: List[np.ndarray], track_ids: np.ndarray,
-                            frame_index: int) -> List[TrajectoryVisualization]:
+                            frame_index: int, ego_length: int, agent_length: int) -> List[TrajectoryVisualization]:
     """Get trajectories (ego and agents) starting at frame_index.
     Ego's trajectory will be named ego_trajectory while agents' agent_trajectory
 
@@ -38,33 +38,33 @@ def _get_frame_trajectories(frames: np.ndarray, agents_frames: List[np.ndarray],
     :param agents_frames: all agents from the scene as a list of array (one per frame)
     :param track_ids: allowed tracks ids we want to build trajectory for
     :param frame_index: index of the frame (trajectory will start from this frame)
+    :param ego_length: length of ego trajectory to extract
+    :param agent_length: length of agent trajectory to extract
     :return: a list of trajectory for visualisation
     """
 
     traj_visualisation: List[TrajectoryVisualization] = []
-    # TODO: factor out future length
-    agent_traj_length = 20
-    for track_id in track_ids:
-        # TODO this is not really relative (note eye and 0 yaw)
-        pos, *_, avail = get_relative_poses(agent_traj_length, frames[frame_index: frame_index + agent_traj_length],
-                                            track_id, agents_frames[frame_index: frame_index + agent_traj_length],
+    if agent_length > 0:
+        for track_id in track_ids:
+            # Note (@lberg): this is not making it relative (note eye and 0 yaw)
+            pos, *_, avail = get_relative_poses(agent_length, frames[frame_index: frame_index + agent_length],
+                                                track_id, agents_frames[frame_index: frame_index + agent_length],
+                                                np.eye(3), 0)
+            traj_visualisation.append(TrajectoryVisualization(xs=pos[avail > 0, 0],
+                                                              ys=pos[avail > 0, 1],
+                                                              color=COLORS["AGENT_DEFAULT"],
+                                                              legend_label="agent_trajectory",
+                                                              track_id=int(track_id)))
+
+    if ego_length > 0:
+        pos, *_, avail = get_relative_poses(ego_length, frames[frame_index: frame_index + ego_length],
+                                            None, agents_frames[frame_index: frame_index + ego_length],
                                             np.eye(3), 0)
         traj_visualisation.append(TrajectoryVisualization(xs=pos[avail > 0, 0],
                                                           ys=pos[avail > 0, 1],
-                                                          color="blue",
-                                                          legend_label="agent_trajectory",
-                                                          track_id=int(track_id)))
-
-    # TODO: factor out future length
-    ego_traj_length = 100
-    pos, *_, avail = get_relative_poses(ego_traj_length, frames[frame_index: frame_index + ego_traj_length],
-                                        None, agents_frames[frame_index: frame_index + ego_traj_length],
-                                        np.eye(3), 0)
-    traj_visualisation.append(TrajectoryVisualization(xs=pos[avail > 0, 0],
-                                                      ys=pos[avail > 0, 1],
-                                                      color="red",
-                                                      legend_label="ego_trajectory",
-                                                      track_id=-1))
+                                                          color="red",
+                                                          legend_label="ego_trajectory",
+                                                          track_id=-1))
 
     return traj_visualisation
 
@@ -189,13 +189,26 @@ def _get_frame_data(mapAPI: MapAPI, frame: np.ndarray, agents_frame: np.ndarray,
                               map_lines=map_lines_vis, trajectories=[])
 
 
+class VisualizerZarrConfig(NamedTuple):
+    """Visualizer configuration when converting a Zarr
+
+    :param ego_trajectory_length: length of the trajectory for ego, 0 to disable
+    :param agents_trajectory_length: length of the trajectory for agents, 0 to disable
+    :param agents_threshold: threshold over agents
+    """
+    ego_trajectory_length: int
+    agents_trajectory_length: int
+    agents_threshold: float
+
+
 def zarr_to_visualizer_scene(scene_dataset: ChunkedDataset, mapAPI: MapAPI,
-                             with_trajectories: bool = True) -> List[FrameVisualization]:
-    """Convert a zarr scene into a list of FrameVisualization which can be used by the visualiser
+                             visualizer_config: VisualizerZarrConfig) -> List[FrameVisualization]:
+    """Convert a zarr scene into a list of FrameVisualization which can be used by the visualiser.
+    The visualised trajectory are extracted from future frames.
 
     :param scene_dataset: a scene dataset. This must contain a single scene
     :param mapAPI: mapAPI object
-    :param with_trajectories: if to enable trajectories or not
+    :param visualizer_config: config for the visualizer
     :return: a list of FrameVisualization objects
     """
     if len(scene_dataset.scenes) != 1:
@@ -210,18 +223,18 @@ def zarr_to_visualizer_scene(scene_dataset: ChunkedDataset, mapAPI: MapAPI,
         frame = frames[frame_idx]
         tls_frame = tls_frames[frame_idx]
 
-        # TODO: hardcoded threshold, it would be great to have a slider filtering on this
         agents_frame = agents_frames[frame_idx]
-        agents_frame = filter_agents_by_labels(agents_frame, 0.1)
+        agents_frame = filter_agents_by_labels(agents_frame, visualizer_config.agents_threshold)
 
         frame_vis = _get_frame_data(mapAPI, frame, agents_frame, tls_frame)
 
-        if with_trajectories:
-            traj_vis = _get_frame_trajectories(frames, agents_frames, agents_frame["track_id"], frame_idx)
-            frame_vis = FrameVisualization(ego=frame_vis.ego, agents=frame_vis.agents,
-                                           map_patches=frame_vis.map_patches,
-                                           map_lines=frame_vis.map_lines,
-                                           trajectories=traj_vis)
+        traj_vis = _get_frame_trajectories(frames, agents_frames, agents_frame["track_id"], frame_idx,
+                                           ego_length=visualizer_config.ego_trajectory_length,
+                                           agent_length=visualizer_config.agents_trajectory_length)
+        frame_vis = FrameVisualization(ego=frame_vis.ego, agents=frame_vis.agents,
+                                       map_patches=frame_vis.map_patches,
+                                       map_lines=frame_vis.map_lines,
+                                       trajectories=traj_vis)
         frames_vis.append(frame_vis)
 
     return frames_vis
