@@ -90,12 +90,51 @@ def compute_agent_velocity(
 
     # current position is included in history positions
     # [history_num_frames, 2]
-    history_positions_diff_m = np.diff(history_positions_m, axis=0)
+    history_positions_diff_m = -np.diff(history_positions_m, axis=0)
     # [history_num_frames, 2]
     history_vels_mps = np.float32(history_positions_diff_m / step_time)
 
     return history_vels_mps, future_vels_mps
 
+
+def compute_agent_accel(
+        history_velocities_mps: np.ndarray, future_velocities_mps: np.ndarray, step_time: float
+) -> Tuple[np.ndarray, np.ndarray]:
+
+    assert step_time > np.finfo(float).eps, f"step_time must be greater then eps, got {step_time}"
+
+    # [future_num_frames, 2]
+    future_velocities_diff_mps = np.concatenate((future_velocities_mps[:1], np.diff(future_velocities_mps, axis=0)))
+    # [future_num_frames, 2]
+    future_accels_mpss = np.float32(future_velocities_diff_mps / step_time)
+
+    # current position is included in history positions
+    # [history_num_frames, 2]
+    history_velocities_diff_mps = -np.diff(history_velocities_mps, axis=0)
+    # [history_num_frames, 2]
+    history_accels_mpss = np.float32(history_velocities_diff_mps / step_time)
+
+    return history_accels_mpss, future_accels_mpss
+
+
+def compute_agent_yawrate(
+        history_yaws_rad: np.ndarray, future_yaws_rad: np.ndarray, step_time: float
+) -> Tuple[np.ndarray, np.ndarray]:
+
+    assert step_time > np.finfo(float).eps, f"step_time must be greater then eps, got {step_time}"
+
+    # [future_num_frames, 2]
+    future_yaws_diff_rad = np.concatenate((future_yaws_rad[:1], np.diff(future_yaws_rad, axis=0)))
+    # [future_num_frames, 1]
+    future_yawrates_radps = np.float32(future_yaws_diff_rad / step_time)
+
+    # current position is included in history positions
+    # [history_num_frames, 1]
+    history_yaws_diff_rad = -np.diff(history_yaws_rad, axis=0)
+    # [history_num_frames, 1]
+    history_yawrates_radps = np.float32(history_yaws_diff_rad / step_time)
+
+    return history_yawrates_radps, future_yawrates_radps
 
 def get_relative_poses(
         num_frames: int,
@@ -257,6 +296,8 @@ def generate_agent_sample(
     )
 
     history_vels_mps, future_vels_mps = compute_agent_velocity(history_positions_m, future_positions_m, step_time)
+    history_accels_mpss, future_accels_mpss = compute_agent_accel(history_vels_mps, future_vels_mps, step_time)
+    history_yawrates_radps, future_yawrates_radps = compute_agent_yawrate(history_yaws_rad, future_yaws_rad, step_time)
 
     result = {
         "frame_index": state_index,
@@ -264,10 +305,14 @@ def generate_agent_sample(
         "target_positions": future_positions_m,
         "target_yaws": future_yaws_rad,
         "target_velocities": future_vels_mps,
+        "target_accels": future_accels_mpss,
+        "target_yawrates": future_yawrates_radps,
         "target_availabilities": future_availabilities,
         "history_positions": history_positions_m,
         "history_yaws": history_yaws_rad,
         "history_velocities": history_vels_mps,
+        "history_accels": history_accels_mpss,
+        "history_yawrates": history_yawrates_radps,
         "history_availabilities": history_availabilities,
         "world_to_image": raster_from_world,  # TODO deprecate
         "raster_from_agent": raster_from_world @ world_from_agent,
