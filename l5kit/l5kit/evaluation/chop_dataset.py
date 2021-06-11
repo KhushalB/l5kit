@@ -15,8 +15,8 @@ MIN_FUTURE_STEPS = 10
 
 
 def create_chopped_dataset(
-        zarr_path: str, th_agent_prob: float, num_frames_to_copy: int, num_frames_gt: int, min_frame_future: int
-) -> str:
+    zarr_path: str, dest_zarr_path: str, th_agent_prob: float, num_frames_to_copy: int, num_frames_gt: int,
+        min_frame_future: int) -> str:
     """
     Create a chopped version of the zarr that can be used as a test set.
     This function was used to generate the test set for the competition so that the future GT is not in the data.
@@ -30,6 +30,7 @@ def create_chopped_dataset(
 
     Args:
         zarr_path (str): input zarr path to be chopped
+        dest_zarr_path (str): destination path to output zarr to
         th_agent_prob (float): threshold over agents probabilities used in select_agents function
         num_frames_to_copy (int):  number of frames to copy from the beginning of each scene, others will be discarded
         min_frame_future (int): minimum number of frames that must be available in the future for an agent
@@ -39,7 +40,8 @@ def create_chopped_dataset(
         str: the parent folder of the new datam
     """
     zarr_path = Path(zarr_path)
-    dest_path = zarr_path.parent / f"{zarr_path.stem}_chopped_{num_frames_to_copy}"
+    dest_zarr_path = Path(dest_zarr_path)
+    dest_path = dest_zarr_path / f"{zarr_path.stem}_chopped_{num_frames_to_copy}"
     chopped_path = dest_path / zarr_path.name
     gt_path = dest_path / "gt.csv"
     mask_chopped_path = dest_path / "mask"
